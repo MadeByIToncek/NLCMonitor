@@ -43,3 +43,5 @@ bin/
 
 /images
 discord.token
+*/target/*
+/bot/dependency-reduced-pom.xml
