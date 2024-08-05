@@ -13,11 +13,15 @@ import net.dv8tion.jda.api.utils.FileUpload;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.jetbrains.annotations.Nullable;
 import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.api.ops.impl.transforms.pairwise.arithmetic.CopyOp;
 import org.nd4j.linalg.factory.Nd4j;
 import space.itoncek.nlcmonitor.DiscordHook;
 
 import javax.imageio.ImageIO;
 import java.awt.Color;
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileInputStream;
@@ -28,6 +32,8 @@ import java.io.ObjectOutputStream;
 import java.io.PrintStream;
 import java.net.URI;
 import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -62,7 +68,7 @@ public class NlcHook extends ListenerAdapter implements DiscordHook {
 
 	@Override
 	public CommandData getCommand() {
-		return Commands.slash("nlc", "Checks for NLC on the OSWIN Radar").addOption(OptionType.ATTACHMENT,"image", "Add OSWIN image from another date than now", false);
+		return Commands.slash("nlc", "Checks for NLC on the OSWIN Radar").addOption(OptionType.ATTACHMENT, "image", "Add OSWIN image from another date than now", false);
 	}
 
 	@Override
@@ -78,7 +84,7 @@ public class NlcHook extends ListenerAdapter implements DiscordHook {
 	@Override
 	public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
 		if (event.getFullCommandName().startsWith(getCommand().getName())) {
-			if(!enabled) {
+			if (!enabled) {
 				event.replyEmbeds(new EmbedBuilder()
 						.setAuthor(jda.getSelfUser().getName(), jda.getSelfUser().getAvatarUrl(), jda.getSelfUser().getAvatarUrl())
 						.setTimestamp(ZonedDateTime.now())
@@ -92,17 +98,37 @@ public class NlcHook extends ListenerAdapter implements DiscordHook {
 					long start = System.currentTimeMillis();
 					File f = File.createTempFile("nlcmonitor_", ".png");
 					BufferedImage bi;
+					boolean old = false;
 					try {
 						Message.Attachment attachment = event.getInteraction().getOption("image").getAsAttachment();
-						if(attachment.isImage()) {
+						if (attachment.isImage()) {
 							bi = ImageIO.read(URI.create(attachment.getUrl()).toURL());
+							old = true;
 						} else {
-							throw new IllegalArgumentException("Not an image");
+							throw new Exception("Not an image");
 						}
-					} catch (IllegalArgumentException ex) {
+					} catch (Exception ex) {
 						bi = ImageIO.read(URI.create("https://www.iap-kborn.de/fileadmin/user_upload/MAIN-abteilung/radar/Radars/OswinVHF/Plots/OSWIN_Mesosphere_4hour.png").toURL());
 					}
 
+					if(old) {
+						Graphics2D g2 = bi.createGraphics();
+
+						g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+						g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+
+						g2.setColor(Color.RED);
+						if(!new File("./vcr.ttf").exists()) Files.copy(URI.create("https://cdn.itoncek.space/fonts/VCR_OSD_MONO-Regular.ttf").toURL().openStream(),new File("./vcr.ttf").toPath(), StandardCopyOption.REPLACE_EXISTING);
+						g2.setFont(Font.createFont(Font.TRUETYPE_FONT, new File("./vcr.ttf")).deriveFont(163F));
+						g2.drawString("OLD DATA!", 165, 1294);
+
+						g2.dispose();
+					}
+
+
+					ImageIO.write(bi, "png", f);
+					FileUpload fu = FileUpload.fromData(f);
+					m.editOriginalAttachments(fu).queue();
 
 					boolean found = false;
 					boolean foundblue = false;
@@ -160,26 +186,31 @@ public class NlcHook extends ListenerAdapter implements DiscordHook {
 					}
 					double supermax = Math.max(error, Math.max(noNLC, NLC));
 
-					String prediction;
+					String prediction = old?"[OLD DATA] " :"";
+					Color color;
 
-					if (error == supermax) prediction = "There was an error with the input data!";
-					else if (noNLC == supermax) prediction = "I don't see any NLC";
-					else
-						prediction = NLC == supermax ? "GO OUT! THERE MIGHT BE NLCs VISIBLE!" : "I broke, msg @IToncek to fix me ;)";
+					if (noNLC == supermax) {
+						prediction += "I don't see any NLC";
+						color = Color.ORANGE;
+					} else if (NLC == supermax) {
+						prediction += "GO OUT! THERE MIGHT BE NLCs VISIBLE!";
+						color = Color.GREEN;
+					} else {
+						prediction += "There was an error with the input data!";
+						color = Color.RED;
+					}
 
-					ImageIO.write(bi, "png", f);
-					FileUpload fu = FileUpload.fromData(f);
 					MessageEmbed e = new EmbedBuilder()
 							.setAuthor(jda.getSelfUser().getName(), jda.getSelfUser().getAvatarUrl(), jda.getSelfUser().getAvatarUrl())
 							.setTimestamp(ZonedDateTime.now())
 							.setTitle(prediction)
 							.setDescription("(took me " + (System.currentTimeMillis() - start) + "ms to figure this out)")
 							.setFooter("[" + error + ", " + noNLC + ", " + NLC + "]")
+							.setColor(color)
 							.build();
 
 					//reset
 					m.editOriginal("Finished predicting!").queue();
-					m.editOriginalAttachments(fu).queue();
 					m.editOriginalEmbeds(e).queue();
 
 					fu.close();

@@ -45,3 +45,5 @@ bin/
 discord.token
 */target/*
 /bot/dependency-reduced-pom.xml
+/vcr.ttf
+/cache/

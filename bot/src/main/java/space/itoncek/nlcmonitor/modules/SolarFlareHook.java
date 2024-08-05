@@ -1,8 +1,6 @@
 package space.itoncek.nlcmonitor.modules;
 
-import static com.twelvemonkeys.lang.StringUtil.pad;
 import static java.util.Collections.max;
-import static java.util.Collections.min;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
@@ -13,27 +11,24 @@ import net.dv8tion.jda.api.utils.FileUpload;
 import org.apache.commons.io.IOUtils;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import space.itoncek.nlcmonitor.DiscordBot;
 import space.itoncek.nlcmonitor.DiscordHook;
 import space.itoncek.utils.signal_processing.SignalDetector;
 
 import javax.imageio.ImageIO;
-import java.awt.BasicStroke;
-import java.awt.Color;
-import java.awt.Graphics2D;
-import java.awt.Point;
-import java.awt.RenderingHints;
-import java.awt.Stroke;
+import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.net.URI;
 import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.StringJoiner;
 
 public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 	ArrayList<File> delete = new ArrayList<>();
@@ -51,51 +46,86 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 						.setDescription("This module was disabled, for further information, contact IToncek")
 						.setColor(Color.RED)
 						.build()).queue();
-			} else try {
-				File temp = File.createTempFile("solarbot", ".png");
-				JSONArray dat = new JSONArray(IOUtils.toString(URI.create("https://services.swpc.noaa.gov/json/goes/primary/xrays-6-hour.json"), Charset.defaultCharset()));
+			} else event.getInteraction().deferReply().queue(q-> {
+				try {
+					File temp = File.createTempFile("solarbot", ".png");
+					JSONArray dat = new JSONArray(IOUtils.toString(URI.create("https://services.swpc.noaa.gov/json/goes/primary/xrays-6-hour.json"), Charset.defaultCharset()));
 
-				ArrayList<Double> values = new ArrayList<>();
-				for (int i = 0; i < dat.length(); i++) {
-					JSONObject o = dat.getJSONObject(i);
-					if (o.getString("energy").equals("0.1-0.8nm")) {
-						values.add(o.getDouble("flux"));
+					ArrayList<Double> values = new ArrayList<>();
+					for (int i = 0; i < dat.length(); i++) {
+						JSONObject o = dat.getJSONObject(i);
+						if (o.getString("energy").equals("0.1-0.8nm")) {
+							values.add(o.getDouble("flux"));
+						}
 					}
-				}
 
-				BufferedImage img = new BufferedImage(3840, 2160, BufferedImage.TYPE_4BYTE_ABGR);
-				Graphics2D g2 = img.createGraphics();
+					BufferedImage img = new BufferedImage(3840, 2160, BufferedImage.TYPE_4BYTE_ABGR);
+					Graphics2D g2 = img.createGraphics();
 
-				g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+					g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+					g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+					g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
-				SignalDetector.SignalDetectorResult result = SignalDetector.analyzeDataForSignals(values.stream().map(x -> Double.valueOf(x + "")).toList(), 25, 3.5, .05);
+					ArrayList<Double> hackedValues = new ArrayList<>(values);
+					double tempval = 0;
+					boolean replacing = false;
+					for (int i = 0; i < values.size(); i++) {
+						double v = values.get(i);
+						if(v == 0 && !replacing) {
+							replacing = true;
+							tempval = values.get(i-1);
+							v = tempval;
+						} else if(v == 0) {
+							v = tempval;
+						} else if(replacing) {
+							replacing = false;
+						}
+						hackedValues.set(i, v);
+					}
 
-				drawGraph(values, img, g2, Color.green);
-				drawGraph(result.signals().stream().map(x -> x * 1d).toList(), img, g2, Color.red);
+					SignalDetector.SignalDetectorResult result = SignalDetector.analyzeDataForSignals(hackedValues.stream().map(x -> Double.valueOf(x + "")).toList(), 25, 3.5, .05);
 
-				g2.dispose();
-				ImageIO.write(img, "png", temp);
-				FileUpload fu = FileUpload.fromData(temp);
-				event.getInteraction().replyFiles(fu).queue(m -> {
-					StringJoiner sb = new StringJoiner("\n");
-					sb.add("```diff");
-					sb.add("  " + "-".repeat(55));
-					generateHeader(sb);
+					final int BORDER_GAP = 30;
+					int height = (img.getHeight() - (2 * BORDER_GAP));
+					final Stroke GRAPH_STROKE = new BasicStroke(8f);
+					final int GRAPH_POINT_WIDTH = 12;
+					final int Y_HATCH_CNT = 10;
+					double xScale = ((double) img.getWidth() - (2 * BORDER_GAP)) / (values.size() - 1);
+
+					drawClassLine(-6, "C",g2,img,BORDER_GAP,height);
+					drawClassLine(-5, "M",g2,img,BORDER_GAP,height);
+					drawClassLine(-4, "X",g2,img,BORDER_GAP,height);
+					drawClassLine(-3, "X10",g2,img,BORDER_GAP,height);
+
+					g2.setColor(Color.WHITE);
+					g2.setStroke(GRAPH_STROKE);
+					// create x and y axes
+					g2.drawLine(BORDER_GAP, img.getHeight() - BORDER_GAP, BORDER_GAP, BORDER_GAP);
+					g2.drawLine(BORDER_GAP, img.getHeight() - BORDER_GAP, img.getWidth() - BORDER_GAP, img.getHeight() - BORDER_GAP);
+
+					// create hatch marks for y-axis.
+					for (int i = 0; i < Y_HATCH_CNT; i++) {
+						int x1 = GRAPH_POINT_WIDTH + BORDER_GAP;
+						int y0 = img.getHeight() - (((i + 1) * (img.getHeight() - BORDER_GAP * 2)) / Y_HATCH_CNT + BORDER_GAP);
+						g2.drawLine(BORDER_GAP, y0, x1, y0);
+					}
+
+					drawGraph(values.stream().map(Math::log10).map(this::remap).toList(), g2,BORDER_GAP,GRAPH_STROKE,height,xScale);
+
 					int previous = 0;
 					boolean running = false;
-					ArrayList<Double> vals = new ArrayList<>();
-					String start = "";
+					HashMap<Double,Integer> vals = new HashMap<>();
+
 					for (int i = 0; i < result.signals().size(); i++) {
 						Integer val = result.signals().get(i);
 						if (running) {
-							vals.add(values.get(i));
+							vals.put(values.get(i),i);
 						}
 						if (val == 1 && previous == 0) {
 							running = true;
-							start = dat.getJSONObject(i).getString("time_tag");
 						} else if (((val == 0) && (previous == 1)) || ((val == 1) && (i == (result.signals().size() - 1)))) {
 							running = false;
-							double max = max(vals);
+							double max = max(vals.keySet());
 							double logmax = Math.log10(max);
 							String flareClass;
 
@@ -105,106 +135,139 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 							else if (logmax >= -7) flareClass = "B";
 							else flareClass = "A";
 
-							double floor = Math.floor(max);
-							double ceil = Math.ceil(max);
-							double ratio = (max - floor) / (ceil - floor);
-							String tag = " ";
-							if(ratio*10 > 8 && flareClass.equals("C") || flareClass.equals("M") || flareClass.equals("X")) {
-								tag = "-";
+
+							if(logmax >= -5) {
+								double floor = Math.floor(max);
+								double ceil = Math.ceil(max);
+								double ratio = (max - floor) / (ceil - floor);
+								flareClass = flareClass + Double.toString(ratio * 10).substring(0, "0.00".length());
+								drawFlareLine(vals.get(max),flareClass,g2,img,BORDER_GAP,xScale);
+								vals.clear();
 							}
-
-							if((i == (result.signals().size() - 1))) {
-								tag = "+";
-							}
-
-							flareClass = flareClass + Double.toString(ratio * 10).substring(0, "0.00".length());
-
-
-							String end = dat.getJSONObject(i).getString("time_tag");
-							StringJoiner js = new StringJoiner(" | ");
-							js.add(flareClass);
-							js.add(start);
-							js.add(end);
-
-							sb.add(tag+" | " + js + " |");
-
-							vals.clear();
-							start = "";
 						}
 						previous = val;
 					}
-					sb.add("  " + "-".repeat(55));
-					sb.add("```");
-					m.editOriginal(sb.toString()).queue();
-				});
-				fu.close();
-				delete.add(temp);
-			} catch (Exception e) {
-				event.getInteraction().reply("Something weird had happened :shrug:").queue(m -> {
-					try {
-						File temp = File.createTempFile("solarbot", ".log");
-						PrintStream ps = new PrintStream(temp, Charset.defaultCharset());
-						e.printStackTrace(ps);
 
-						m.editOriginalAttachments(FileUpload.fromData(temp)).queue();
-						delete.add(temp);
-					} catch (IOException ex) {
-						throw new RuntimeException(ex);
+					if(DiscordBot.dev) {
+						if (!new File("./vcr.ttf").exists())
+							Files.copy(URI.create("https://cdn.itoncek.space/fonts/VCR_OSD_MONO-Regular.ttf").toURL().openStream(), new File("./vcr.ttf").toPath(), StandardCopyOption.REPLACE_EXISTING);
+						g2.setFont(Font.createFont(Font.TRUETYPE_FONT, new File("./vcr.ttf")).deriveFont(120f));
+						g2.setColor(new Color(255,0,0,70));
+						g2.drawString("DEV", img.getWidth() - 20 - g2.getFontMetrics().stringWidth("DEV"),g2.getFontMetrics().getHeight()+20);
 					}
-				});
-			}
+
+					g2.dispose();
+					ImageIO.write(img, "png", temp);
+					FileUpload fu = FileUpload.fromData(temp);
+					q.editOriginalAttachments(fu).queue();
+
+					fu.close();
+					delete.add(temp);
+				} catch (Exception e) {
+					event.getInteraction().reply("Something weird had happened :shrug:").queue(m -> {
+						try {
+							File temp = File.createTempFile("solarbot", ".log");
+							PrintStream ps = new PrintStream(temp, Charset.defaultCharset());
+							e.printStackTrace(ps);
+
+							m.editOriginalAttachments(FileUpload.fromData(temp)).queue();
+							delete.add(temp);
+						} catch (IOException ex) {
+							throw new RuntimeException(ex);
+						}
+					});
+					e.printStackTrace();
+				}
+			});
 		}
 	}
 
-	private void generateHeader(StringJoiner sb) {
-		StringJoiner js = new StringJoiner(" | ");
-		js.add("CLASS");
-		js.add(pad("START", 20, " ", false));
-		js.add(pad("END", 20, " ", false));
-		sb.add("  | " + js + " |");
+	int previousX = 0;
+	int previousLength = 0;
+	int previousOffset = 0;
+
+	private void drawFlareLine(int i, String flareClass, Graphics2D g2, BufferedImage img, int BORDER_GAP, double xScale) throws IOException, FontFormatException {
+		if (!new File("./vcr.ttf").exists())
+			Files.copy(URI.create("https://cdn.itoncek.space/fonts/VCR_OSD_MONO-Regular.ttf").toURL().openStream(), new File("./vcr.ttf").toPath(), StandardCopyOption.REPLACE_EXISTING);
+		g2.setFont(Font.createFont(Font.TRUETYPE_FONT, new File("./vcr.ttf")).deriveFont(80F));
+
+		int x = (int) (i * xScale + BORDER_GAP);
+		if ((previousX + previousLength + 20) > (x + 20)) {
+			previousOffset += g2.getFontMetrics().getHeight() + 20;
+		} else {
+			previousOffset = 0;
+		}
+
+		g2.setColor(new Color(255, 255, 255, 80));
+		g2.setStroke(new BasicStroke(16f));
+		g2.drawLine(x, BORDER_GAP + 8, x, img.getHeight() - BORDER_GAP - 8 - previousOffset);
+
+
+		g2.drawString(flareClass, x + 20, img.getHeight() - BORDER_GAP - 15 - previousOffset);
+		previousX = x;
+		previousLength = g2.getFontMetrics().stringWidth(flareClass);
 	}
 
-	private void drawGraph(List<Double> datapoints, BufferedImage img, Graphics2D g2, Color GRAPH_COLOR) {
-		final int BORDER_GAP = 30;
-		final double MAX_SCORE = max(datapoints);
-		final double MIN_SCORE = min(datapoints);
-		final Stroke GRAPH_STROKE = new BasicStroke(8f);
-		final int GRAPH_POINT_WIDTH = 12;
-		final int Y_HATCH_CNT = 10;
+	public Double remap(double x) {
+		return x / 5d + 1.4;
+	}
 
-		double xScale = ((double) img.getWidth() - (2 * BORDER_GAP)) / (datapoints.size() - 1);
-		double yScale = ((img.getHeight() - (2 * BORDER_GAP)) - (MIN_SCORE - (MIN_SCORE * .1))) / (MAX_SCORE + (MAX_SCORE * .1));
+	private void drawGraph(List<Double> datapoints, Graphics2D g2, int BORDER_GAP, Stroke GRAPH_STROKE, int imgheight, double xScale) {
+		ArrayList<Point> graphPoints = new ArrayList<>(datapoints.size());
+		ArrayList<Color> colorPoints = new ArrayList<>(datapoints.size());
 
-		ArrayList<Point> graphPoints = new ArrayList<>();
 		for (int i = 0; i < datapoints.size(); i++) {
-			if (datapoints.get(i) >= 0) {
+			if(Double.isInfinite(datapoints.get(i))) {
+				graphPoints.add(null);
+				colorPoints.add(Color.GRAY);
+			} else {
 				int x1 = (int) (i * xScale + BORDER_GAP);
-				int y1 = (int) ((MAX_SCORE - datapoints.get(i)) * yScale + BORDER_GAP);
-				graphPoints.add(new Point(x1, y1));
+				int y1 = (int) (imgheight - (imgheight * datapoints.get(i))) + BORDER_GAP;
+				graphPoints.add(new Point(x1,y1));
+				colorPoints.add(determineColor(datapoints.get(i)));
 			}
 		}
 
-		g2.setColor(Color.WHITE);
-		// create x and y axes
-		g2.drawLine(BORDER_GAP, img.getHeight() - BORDER_GAP, BORDER_GAP, BORDER_GAP);
-		g2.drawLine(BORDER_GAP, img.getHeight() - BORDER_GAP, img.getWidth() - BORDER_GAP, img.getHeight() - BORDER_GAP);
-
-		// create hatch marks for y-axis.
-		for (int i = 0; i < Y_HATCH_CNT; i++) {
-			int x1 = GRAPH_POINT_WIDTH + BORDER_GAP;
-			int y0 = img.getHeight() - (((i + 1) * (img.getHeight() - BORDER_GAP * 2)) / Y_HATCH_CNT + BORDER_GAP);
-			g2.drawLine(BORDER_GAP, y0, x1, y0);
-		}
-
-		g2.setColor(GRAPH_COLOR);
 		g2.setStroke(GRAPH_STROKE);
 		for (int i = 0; i < graphPoints.size() - 1; i++) {
-			int x1 = graphPoints.get(i).x;
-			int y1 = graphPoints.get(i).y;
-			int x2 = graphPoints.get(i + 1).x;
-			int y2 = graphPoints.get(i + 1).y;
-			g2.drawLine(x1, y1, x2, y2);
+			g2.setColor(colorPoints.get(i+1));
+			Point i0 = graphPoints.get(i);
+			Point i1 = graphPoints.get(i+1);
+			if(i0 != null && i1 != null) {
+				int x1 = i0.x;
+				int y1 = i0.y;
+				int x2 = i1.x;
+				int y2 = i1.y;
+				g2.drawLine(x1, y1, x2, y2);
+			}
 		}
+	}
+
+	private Color determineColor(Double v) {
+		if (v > .6) {
+			return new Color(255, 0, 0);
+		} else if (v > .4) {
+			return new Color(255, 128, 0);
+		} else if (v > .2) {
+			return new Color(255, 255, 0);
+		} else return new Color(94, 255, 0);
+	}
+
+	private void drawClassLine(double strenght, String classs, Graphics2D g2, BufferedImage img, int BORDER_GAP,int imgheight) throws IOException, FontFormatException {
+		g2.setColor(new Color(255,255,255, 80));
+		g2.setStroke(new BasicStroke(8f));
+
+		int y = (int) (imgheight-(imgheight * remap(strenght))) + BORDER_GAP;
+		g2.drawLine(BORDER_GAP, y , img.getWidth() - BORDER_GAP, y);
+
+
+		g2.setColor(new Color(255,255,255, 255));
+		if(!new File("./vcr.ttf").exists()) Files.copy(URI.create("https://cdn.itoncek.space/fonts/VCR_OSD_MONO-Regular.ttf").toURL().openStream(),new File("./vcr.ttf").toPath(), StandardCopyOption.REPLACE_EXISTING);
+		g2.setFont(Font.createFont(Font.TRUETYPE_FONT, new File("./vcr.ttf")).deriveFont(80f));
+
+		int x1 = img.getWidth() - BORDER_GAP-g2.getFontMetrics().stringWidth(classs);
+		int y1 = y + g2.getFontMetrics().getHeight() + 10;
+		g2.drawString(classs,x1,y1);
 	}
 
 	@Override

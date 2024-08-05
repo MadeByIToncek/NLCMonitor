@@ -29,7 +29,7 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 public class DiscordBot extends ListenerAdapter {
-	private static final boolean dev = System.getenv("dev").equals("true");
+	public static final boolean dev = System.getenv("dev").equals("true");
 	private static JDA jda;
 	private static final HashMap<String, DiscordHook> hooks = new HashMap<>();
 
