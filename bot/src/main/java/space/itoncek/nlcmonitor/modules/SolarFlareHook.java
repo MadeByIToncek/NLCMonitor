@@ -5,12 +5,17 @@ import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
+import net.dv8tion.jda.api.interactions.commands.OptionMapping;
+import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.CommandData;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
+import net.dv8tion.jda.api.interactions.commands.build.OptionData;
 import net.dv8tion.jda.api.utils.FileUpload;
 import org.apache.commons.io.IOUtils;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import space.itoncek.nlcmonitor.DiscordBot;
 import space.itoncek.nlcmonitor.DiscordHook;
 import space.itoncek.utils.signal_processing.SignalDetector;
@@ -31,9 +36,54 @@ import java.util.HashMap;
 import java.util.List;
 
 public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
+	private static final Logger log = LoggerFactory.getLogger(SolarFlareHook.class);
 	ArrayList<File> delete = new ArrayList<>();
 	private boolean enabled;
 	private JDA jda;
+
+	@Override
+	public void setup(JDA jda) {
+		this.jda = jda;
+		jda.addEventListener(this);
+	}
+
+	@Override
+	public void close(JDA jda) {
+		jda.removeEventListener(this);
+		delete.forEach(File::deleteOnExit);
+	}
+
+	@Override
+	public CommandData getCommand() {
+		return Commands.slash("flare", "Shows flares that happened in the past 6 hours.")
+				.addOptions(new OptionData(OptionType.STRING, "history", "Load historical data")
+						.addChoice("6 Hours", "6hour")
+						.addChoice("1 Day", "1day")
+						.addChoice("3 Days", "3day")
+						.addChoice("7 Days", "7day")
+						.setRequired(false)
+						.setAutoComplete(false));
+	}
+
+	@Override
+	public void setEnabled(boolean enabled) {
+		this.enabled = enabled;
+	}
+
+	@Override
+	public String id() {
+		return "solarFlareHook";
+	}
+
+	@Override
+	public boolean autostartWithoutDev() {
+		return true;
+	}
+
+	@Override
+	public boolean isEnabled() {
+		return enabled;
+	}
 
 	@Override
 	public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
@@ -49,7 +99,30 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 			} else event.getInteraction().deferReply().queue(q-> {
 				try {
 					File temp = File.createTempFile("solarbot", ".png");
-					JSONArray dat = new JSONArray(IOUtils.toString(URI.create("https://services.swpc.noaa.gov/json/goes/primary/xrays-6-hour.json"), Charset.defaultCharset()));
+					String uri = "https://services.swpc.noaa.gov/json/goes/primary/xrays-";
+
+					OptionMapping opt = event.getInteraction().getOption("history");
+					double flareThreshold = -5;
+					if (opt != null) {
+						String attachment = switch (opt.getAsString()) {
+							case "1day" -> "1-day";
+							case "3day" -> {
+								flareThreshold = -4.6;
+								yield "3-day";
+							}
+							case "7day" -> {
+								flareThreshold = -4.25;
+								yield "7-day";
+							}
+							default -> "6-hour";
+						};
+						uri += attachment;
+					} else {
+						uri += "6-hour";
+					}
+					uri += ".json";
+
+					JSONArray dat = new JSONArray(IOUtils.toString(URI.create(uri), Charset.defaultCharset()));
 
 					ArrayList<Double> values = new ArrayList<>();
 					for (int i = 0; i < dat.length(); i++) {
@@ -83,7 +156,7 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 						hackedValues.set(i, v);
 					}
 
-					SignalDetector.SignalDetectorResult result = SignalDetector.analyzeDataForSignals(hackedValues.stream().map(x -> Double.valueOf(x + "")).toList(), 25, 3.5, .05);
+					SignalDetector.SignalDetectorResult result = SignalDetector.analyzeDataForSignals(hackedValues.stream().map(x -> Double.valueOf(x + "")).toList(), 5, 6., .05);
 
 					final int BORDER_GAP = 30;
 					int height = (img.getHeight() - (2 * BORDER_GAP));
@@ -129,18 +202,26 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 							double logmax = Math.log10(max);
 							String flareClass;
 
-							if (logmax >= -4) flareClass = "X";
-							else if (logmax >= -5) flareClass = "M";
-							else if (logmax >= -6) flareClass = "C";
-							else if (logmax >= -7) flareClass = "B";
-							else flareClass = "A";
+							double floor;
+							if (logmax >= -4) {
+								flareClass = "X";
+								floor = -4;
+							} else if (logmax >= -5) {
+								flareClass = "M";
+								floor = -5;
+							} else if (logmax >= -6) {
+								flareClass = "C";
+								floor = -6;
+							} else if (logmax >= -7) {
+								flareClass = "B";
+								floor = -7;
+							} else {
+								flareClass = "A";
+								floor = -8;
+							}
 
-
-							if(logmax >= -5) {
-								double floor = Math.floor(max);
-								double ceil = Math.ceil(max);
-								double ratio = (max - floor) / (ceil - floor);
-								flareClass = flareClass + Double.toString(ratio * 10).substring(0, "0.00".length());
+							if (logmax >= flareThreshold) {
+								flareClass = flareClass + Double.toString(max * Math.pow(10, floor)).substring(0, "0.00".length());
 								drawFlareLine(vals.get(max),flareClass,g2,img,BORDER_GAP,xScale);
 								vals.clear();
 							}
@@ -163,6 +244,9 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 
 					fu.close();
 					delete.add(temp);
+					previousOffset = 0;
+					previousLength = 0;
+					previousX = 0;
 				} catch (Exception e) {
 					event.getInteraction().reply("Something weird had happened :shrug:").queue(m -> {
 						try {
@@ -192,7 +276,7 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 		g2.setFont(Font.createFont(Font.TRUETYPE_FONT, new File("./vcr.ttf")).deriveFont(80F));
 
 		int x = (int) (i * xScale + BORDER_GAP);
-		if ((previousX + previousLength + 20) > (x + 20)) {
+		if (previousX + previousLength > x) {
 			previousOffset += g2.getFontMetrics().getHeight() + 20;
 		} else {
 			previousOffset = 0;
@@ -209,8 +293,13 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 	}
 
 	public Double remap(double x) {
-		return x / 5d + 1.4;
+		return (x + 8) / 6;
 	}
+
+	private double unremap(Double v) {
+		return (v * 6) - 8;
+	}
+
 
 	private void drawGraph(List<Double> datapoints, Graphics2D g2, int BORDER_GAP, Stroke GRAPH_STROKE, int imgheight, double xScale) {
 		ArrayList<Point> graphPoints = new ArrayList<>(datapoints.size());
@@ -244,14 +333,16 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 	}
 
 	private Color determineColor(Double v) {
-		if (v > .6) {
-			return new Color(255, 0, 0);
-		} else if (v > .4) {
-			return new Color(255, 128, 0);
-		} else if (v > .2) {
-			return new Color(255, 255, 0);
-		} else return new Color(94, 255, 0);
+		double x = unremap(v);
+		if (x >= -2) return new Color(0, 0, 0);
+		else if (x >= -3) return new Color(87, 0, 0);
+		else if (x >= -4) return new Color(255, 0, 0);
+		else if (v >= -5) return new Color(255, 140, 0);
+		else if (v >= -6) return new Color(255, 225, 0);
+		else if (v >= -7) return new Color(79, 218, 0);
+		else return new Color(26, 62, 0);
 	}
+
 
 	private void drawClassLine(double strenght, String classs, Graphics2D g2, BufferedImage img, int BORDER_GAP,int imgheight) throws IOException, FontFormatException {
 		g2.setColor(new Color(255,255,255, 80));
@@ -268,42 +359,5 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 		int x1 = img.getWidth() - BORDER_GAP-g2.getFontMetrics().stringWidth(classs);
 		int y1 = y + g2.getFontMetrics().getHeight() + 10;
 		g2.drawString(classs,x1,y1);
-	}
-
-	@Override
-	public void setup(JDA jda) {
-		this.jda = jda;
-		jda.addEventListener(this);
-	}
-
-	@Override
-	public void close(JDA jda) {
-		jda.removeEventListener(this);
-		delete.forEach(File::deleteOnExit);
-	}
-
-	@Override
-	public CommandData getCommand() {
-		return Commands.slash("flare", "Shows flares that happened in the past 6 hours.");
-	}
-
-	@Override
-	public void setEnabled(boolean enabled) {
-		this.enabled = enabled;
-	}
-
-	@Override
-	public String id() {
-		return "solarFlareHook";
-	}
-
-	@Override
-	public boolean autostartWithoutDev() {
-		return true;
-	}
-
-	@Override
-	public boolean isEnabled() {
-		return enabled;
 	}
 }

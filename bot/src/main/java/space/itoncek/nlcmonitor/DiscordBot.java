@@ -64,10 +64,16 @@ public class DiscordBot extends ListenerAdapter {
 		updateCommands();
 
 		jda.getPresence().setPresence(OnlineStatus.ONLINE, activity);
+
+//		MonitorManager mm = new MonitorManager(jda);
+//		mm.register(new SolarFlareMonitor());
+//
+//		mm.start();
 		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
 			hooks.forEach((id, hook) -> {
 				hook.close(jda);
 			});
+//			mm.awaitShutdown();
 			try {
 				jda.awaitShutdown();
 			} catch (InterruptedException e) {
@@ -77,8 +83,8 @@ public class DiscordBot extends ListenerAdapter {
 	}
 
 	private static void updateCommands() {
-		ArrayList<CommandData> commands = new ArrayList<>();
-		hooks.values().parallelStream().filter(DiscordHook::isEnabled).forEach(hook -> {
+		ArrayList<CommandData> commands = new ArrayList<>(hooks.size());
+		hooks.values().stream().filter(DiscordHook::isEnabled).forEach(hook -> {
 			hook.setup(jda);
 			commands.add(hook.getCommand());
 		});

@@ -10,13 +10,13 @@ public interface DiscordHook {
 
 	void close(JDA jda);
 
-	String id();
-
-	boolean autostartWithoutDev();
+	boolean isEnabled();
 
 	void setEnabled(boolean enabled);
 
-	boolean isEnabled();
+	boolean autostartWithoutDev();
+
+	String id();
 
 	CommandData getCommand();
 }
