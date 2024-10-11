@@ -24,7 +24,6 @@ import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.net.URI;
@@ -32,13 +31,15 @@ import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.*;
 import java.util.List;
 
 public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 	private static final Logger log = LoggerFactory.getLogger(SolarFlareHook.class);
 	ArrayList<File> delete = new ArrayList<>();
+	int previousX = 0;
+	int previousLength = 0;
+	int previousOffset = 0;
 	private boolean enabled;
 	private JDA jda;
 
@@ -67,11 +68,6 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 	}
 
 	@Override
-	public void setEnabled(boolean enabled) {
-		this.enabled = enabled;
-	}
-
-	@Override
 	public String id() {
 		return "solarFlareHook";
 	}
@@ -87,9 +83,14 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 	}
 
 	@Override
+	public void setEnabled(boolean enabled) {
+		this.enabled = enabled;
+	}
+
+	@Override
 	public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
 		if (event.getFullCommandName().startsWith(getCommand().getName())) {
-			if(!enabled) {
+			if (!enabled) {
 				event.replyEmbeds(new EmbedBuilder()
 						.setAuthor(jda.getSelfUser().getName(), jda.getSelfUser().getAvatarUrl(), jda.getSelfUser().getAvatarUrl())
 						.setTimestamp(ZonedDateTime.now())
@@ -97,10 +98,11 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 						.setDescription("This module was disabled, for further information, contact IToncek")
 						.setColor(Color.RED)
 						.build()).queue();
-			} else event.getInteraction().deferReply().queue(q-> {
+			} else event.getInteraction().deferReply().queue(q -> {
 				try {
 					File temp = File.createTempFile("solarbot", ".png");
-					String uri = "https://services.swpc.noaa.gov/json/goes/primary/xrays-";
+					String primary = "https://services.swpc.noaa.gov/json/goes/primary/xrays-";
+					String secondary = "https://services.swpc.noaa.gov/json/goes/secondary/xrays-";
 
 					OptionMapping opt = event.getInteraction().getOption("history");
 					double flareThreshold = -5;
@@ -117,25 +119,45 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 							}
 							default -> "6-hour";
 						};
-						uri += attachment;
+						primary += attachment;
+						secondary += attachment;
 					} else {
-						uri += "6-hour";
+						primary += "6-hour";
+						secondary += "6-hour";
 					}
-					uri += ".json";
+					primary += ".json";
+					secondary += ".json";
 
-					JSONArray dat = new JSONArray(IOUtils.toString(URI.create(uri), Charset.defaultCharset()));
+					q.editOriginal("Downloading GOES primary").queue();
+					JSONArray primaryData = new JSONArray(IOUtils.toString(URI.create(primary), Charset.defaultCharset()));
+					q.editOriginal("Downloading GOES secondary").queue();
+					JSONArray secondaryData = new JSONArray(IOUtils.toString(URI.create(secondary), Charset.defaultCharset()));
 
-					ArrayList<Double> values = new ArrayList<>();
-					try (FileWriter fw = new FileWriter("./test.csv")) {
-						for (int i = 0; i < dat.length(); i++) {
-							JSONObject o = dat.getJSONObject(i);
-							if (o.getString("energy").equals("0.1-0.8nm")) {
-								values.add(o.getDouble("flux"));
-								fw.write(i + "," + o.getDouble("flux")+"\n");
-							}
+					q.editOriginal("Correcting for orbital parameters").queue();
+
+					TreeMap<ZonedDateTime, Double> pd = new TreeMap<>();
+					for (int i = 0; i < primaryData.length(); i++) {
+						JSONObject o = primaryData.getJSONObject(i);
+						if (o.getString("energy").equals("0.1-0.8nm")) {
+							pd.put(ZonedDateTime.parse(o.getString("time_tag")), o.getDouble("flux"));
 						}
 					}
+					TreeMap<ZonedDateTime, Double> sd = new TreeMap<>();
+					for (int i = 0; i < secondaryData.length(); i++) {
+						JSONObject o = secondaryData.getJSONObject(i);
+						if (o.getString("energy").equals("0.1-0.8nm")) {
+							sd.put(ZonedDateTime.parse(o.getString("time_tag")), o.getDouble("flux"));
+						}
+					}
+					ArrayList<Double> values = new ArrayList<>();
+					pd.forEach((date, val)-> {
+						double pri = val;
+						double sec = sd.get(date);
 
+						values.add(Math.max(pri,sec));
+					});
+
+					q.editOriginal("Generating plot").queue();
 					BufferedImage img = new BufferedImage(3840, 2160, BufferedImage.TYPE_4BYTE_ABGR);
 					Graphics2D g2 = img.createGraphics();
 
@@ -148,13 +170,13 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 					boolean replacing = false;
 					for (int i = 0; i < values.size(); i++) {
 						double v = values.get(i);
-						if(v == 0 && !replacing) {
+						if (v == 0 && !replacing) {
 							replacing = true;
-							tempval = values.get(i-1);
+							tempval = values.get(i - 1);
 							v = tempval;
-						} else if(v == 0) {
+						} else if (v == 0) {
 							v = tempval;
-						} else if(replacing) {
+						} else if (replacing) {
 							replacing = false;
 						}
 						hackedValues.set(i, v);
@@ -169,10 +191,10 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 					final int Y_HATCH_CNT = 10;
 					double xScale = ((double) img.getWidth() - (2 * BORDER_GAP)) / (values.size() - 1);
 
-					drawClassLine(-6, "C",g2,img,BORDER_GAP,height);
-					drawClassLine(-5, "M",g2,img,BORDER_GAP,height);
-					drawClassLine(-4, "X",g2,img,BORDER_GAP,height);
-					drawClassLine(-3, "X10",g2,img,BORDER_GAP,height);
+					drawClassLine(-6, "C", g2, img, BORDER_GAP, height);
+					drawClassLine(-5, "M", g2, img, BORDER_GAP, height);
+					drawClassLine(-4, "X", g2, img, BORDER_GAP, height);
+					drawClassLine(-3, "X10", g2, img, BORDER_GAP, height);
 
 					g2.setColor(Color.WHITE);
 					g2.setStroke(GRAPH_STROKE);
@@ -180,23 +202,19 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 					g2.drawLine(BORDER_GAP, img.getHeight() - BORDER_GAP, BORDER_GAP, BORDER_GAP);
 					g2.drawLine(BORDER_GAP, img.getHeight() - BORDER_GAP, img.getWidth() - BORDER_GAP, img.getHeight() - BORDER_GAP);
 
-					// create hatch marks for y-axis.
-					for (int i = 0; i < Y_HATCH_CNT; i++) {
-						int x1 = GRAPH_POINT_WIDTH + BORDER_GAP;
-						int y0 = img.getHeight() - (((i + 1) * (img.getHeight() - BORDER_GAP * 2)) / Y_HATCH_CNT + BORDER_GAP);
-						g2.drawLine(BORDER_GAP, y0, x1, y0);
-					}
 
-					drawGraph(values.stream().map(Math::log10).map(this::remap).toList(), g2,BORDER_GAP,GRAPH_STROKE,height,xScale);
+					q.editOriginal("Graphing points").queue();
+					drawGraph(values.stream().map(Math::log10).map(this::remap).toList(), g2, BORDER_GAP, GRAPH_STROKE, height, xScale);
 
 					int previous = 0;
 					boolean running = false;
-					HashMap<Double,Integer> vals = new HashMap<>();
+					HashMap<Double, Integer> vals = new HashMap<>();
 
+					q.editOriginal("Graphing flares").queue();
 					for (int i = 0; i < result.signals().size(); i++) {
 						Integer val = result.signals().get(i);
 						if (running) {
-							vals.put(values.get(i),i);
+							vals.put(values.get(i), i);
 						}
 						if (val == 1 && previous == 0) {
 							running = true;
@@ -226,25 +244,27 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 
 							if (logmax >= flareThreshold) {
 								flareClass = flareClass + Double.toString(max * Math.pow(10, floor)).substring(0, "0.00".length());
-								drawFlareLine(vals.get(max),flareClass,g2,img,BORDER_GAP,xScale);
+								drawFlareLine(vals.get(max), flareClass, g2, img, BORDER_GAP, xScale);
 								vals.clear();
 							}
 						}
 						previous = val;
 					}
 
-					if(DiscordBot.dev) {
+					q.editOriginal("Finalising").queue();
+					if (DiscordBot.dev) {
 						if (!new File("./vcr.ttf").exists())
 							Files.copy(URI.create("https://cdn.itoncek.space/fonts/VCR_OSD_MONO-Regular.ttf").toURL().openStream(), new File("./vcr.ttf").toPath(), StandardCopyOption.REPLACE_EXISTING);
 						g2.setFont(Font.createFont(Font.TRUETYPE_FONT, new File("./vcr.ttf")).deriveFont(120f));
-						g2.setColor(new Color(255,0,0,70));
-						g2.drawString("DEV", img.getWidth() - 20 - g2.getFontMetrics().stringWidth("DEV"),g2.getFontMetrics().getHeight()+20);
+						g2.setColor(new Color(255, 0, 0, 70));
+						g2.drawString("DEV", img.getWidth() - 20 - g2.getFontMetrics().stringWidth("DEV"), g2.getFontMetrics().getHeight() + 20);
 					}
 
 					g2.dispose();
 					ImageIO.write(img, "png", temp);
 					FileUpload fu = FileUpload.fromData(temp);
 					q.editOriginalAttachments(fu).queue();
+					q.editOriginal("").queue();
 
 					fu.close();
 					delete.add(temp);
@@ -269,10 +289,6 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 			});
 		}
 	}
-
-	int previousX = 0;
-	int previousLength = 0;
-	int previousOffset = 0;
 
 	private void drawFlareLine(int i, String flareClass, Graphics2D g2, BufferedImage img, int BORDER_GAP, double xScale) throws IOException, FontFormatException {
 		if (!new File("./vcr.ttf").exists())
@@ -310,23 +326,23 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 		ArrayList<Color> colorPoints = new ArrayList<>(datapoints.size());
 
 		for (int i = 0; i < datapoints.size(); i++) {
-			if(Double.isInfinite(datapoints.get(i))) {
+			if (Double.isInfinite(datapoints.get(i))) {
 				graphPoints.add(null);
 				colorPoints.add(Color.GRAY);
 			} else {
 				int x1 = (int) (i * xScale + BORDER_GAP);
 				int y1 = (int) (imgheight - (imgheight * datapoints.get(i))) + BORDER_GAP;
-				graphPoints.add(new Point(x1,y1));
+				graphPoints.add(new Point(x1, y1));
 				colorPoints.add(determineColor(datapoints.get(i)));
 			}
 		}
 
 		g2.setStroke(GRAPH_STROKE);
 		for (int i = 0; i < graphPoints.size() - 1; i++) {
-			g2.setColor(colorPoints.get(i+1));
+			g2.setColor(colorPoints.get(i + 1));
 			Point i0 = graphPoints.get(i);
-			Point i1 = graphPoints.get(i+1);
-			if(i0 != null && i1 != null) {
+			Point i1 = graphPoints.get(i + 1);
+			if (i0 != null && i1 != null) {
 				int x1 = i0.x;
 				int y1 = i0.y;
 				int x2 = i1.x;
@@ -348,20 +364,21 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 	}
 
 
-	private void drawClassLine(double strenght, String classs, Graphics2D g2, BufferedImage img, int BORDER_GAP,int imgheight) throws IOException, FontFormatException {
-		g2.setColor(new Color(255,255,255, 80));
+	private void drawClassLine(double strenght, String classs, Graphics2D g2, BufferedImage img, int BORDER_GAP, int imgheight) throws IOException, FontFormatException {
+		g2.setColor(new Color(255, 255, 255, 80));
 		g2.setStroke(new BasicStroke(8f));
 
-		int y = (int) (imgheight-(imgheight * remap(strenght))) + BORDER_GAP;
-		g2.drawLine(BORDER_GAP, y , img.getWidth() - BORDER_GAP, y);
+		int y = (int) (imgheight - (imgheight * remap(strenght))) + BORDER_GAP;
+		g2.drawLine(BORDER_GAP, y, img.getWidth() - BORDER_GAP, y);
 
 
-		g2.setColor(new Color(255,255,255, 255));
-		if(!new File("./vcr.ttf").exists()) Files.copy(URI.create("https://cdn.itoncek.space/fonts/VCR_OSD_MONO-Regular.ttf").toURL().openStream(),new File("./vcr.ttf").toPath(), StandardCopyOption.REPLACE_EXISTING);
+		g2.setColor(new Color(255, 255, 255, 255));
+		if (!new File("./vcr.ttf").exists())
+			Files.copy(URI.create("https://cdn.itoncek.space/fonts/VCR_OSD_MONO-Regular.ttf").toURL().openStream(), new File("./vcr.ttf").toPath(), StandardCopyOption.REPLACE_EXISTING);
 		g2.setFont(Font.createFont(Font.TRUETYPE_FONT, new File("./vcr.ttf")).deriveFont(80f));
 
-		int x1 = img.getWidth() - BORDER_GAP-g2.getFontMetrics().stringWidth(classs);
+		int x1 = img.getWidth() - BORDER_GAP - g2.getFontMetrics().stringWidth(classs);
 		int y1 = y + g2.getFontMetrics().getHeight() + 10;
-		g2.drawString(classs,x1,y1);
+		g2.drawString(classs, x1, y1);
 	}
 }
