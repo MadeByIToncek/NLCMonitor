@@ -24,6 +24,7 @@ import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.net.URI;
@@ -125,10 +126,13 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 					JSONArray dat = new JSONArray(IOUtils.toString(URI.create(uri), Charset.defaultCharset()));
 
 					ArrayList<Double> values = new ArrayList<>();
-					for (int i = 0; i < dat.length(); i++) {
-						JSONObject o = dat.getJSONObject(i);
-						if (o.getString("energy").equals("0.1-0.8nm")) {
-							values.add(o.getDouble("flux"));
+					try (FileWriter fw = new FileWriter("./test.csv")) {
+						for (int i = 0; i < dat.length(); i++) {
+							JSONObject o = dat.getJSONObject(i);
+							if (o.getString("energy").equals("0.1-0.8nm")) {
+								values.add(o.getDouble("flux"));
+								fw.write(i + "," + o.getDouble("flux")+"\n");
+							}
 						}
 					}
 
@@ -196,7 +200,7 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 						}
 						if (val == 1 && previous == 0) {
 							running = true;
-						} else if (((val == 0) && (previous == 1)) || ((val == 1) && (i == (result.signals().size() - 1)))) {
+						} else if ((((val == 0) && (previous == 1)) || ((val == 1) && (i == (result.signals().size() - 1)))) && !vals.isEmpty()) {
 							running = false;
 							double max = max(vals.keySet());
 							double logmax = Math.log10(max);
@@ -248,13 +252,13 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 					previousLength = 0;
 					previousX = 0;
 				} catch (Exception e) {
-					event.getInteraction().reply("Something weird had happened :shrug:").queue(m -> {
+					q.editOriginal("Something weird had happened :shrug:").queue(m -> {
 						try {
 							File temp = File.createTempFile("solarbot", ".log");
 							PrintStream ps = new PrintStream(temp, Charset.defaultCharset());
 							e.printStackTrace(ps);
 
-							m.editOriginalAttachments(FileUpload.fromData(temp)).queue();
+							q.editOriginalAttachments(FileUpload.fromData(temp)).queue();
 							delete.add(temp);
 						} catch (IOException ex) {
 							throw new RuntimeException(ex);

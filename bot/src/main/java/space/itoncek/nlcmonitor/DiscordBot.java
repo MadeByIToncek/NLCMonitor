@@ -95,10 +95,19 @@ public class DiscordBot extends ListenerAdapter {
 				.addOption(OptionType.STRING, "enable", "Should this module be enabled or disabled?", true, true)
 		);
 
-		jda.updateCommands().queue();
-		jda.getGuilds().stream()
-				.map(g -> g.updateCommands().addCommands(commands))
-				.forEach(RestAction::queue);
+		List<Command> present = jda.retrieveCommands().complete();
+		for (CommandData command : commands) {
+			for (Command c : present) {
+				boolean replacement_needed = false;
+				if(!c.getName().equals(command.getName())) replacement_needed = true;
+				if(!c.getType().equals(command.getType())) replacement_needed = true;
+				if(!c.getDefaultPermissions().equals(command.getDefaultPermissions())) replacement_needed = true;
+				if(!replacement_needed) {
+					commands.remove(command);
+				}
+			}
+		}
+		jda.updateCommands().addCommands(commands).queue();
 	}
 
 
