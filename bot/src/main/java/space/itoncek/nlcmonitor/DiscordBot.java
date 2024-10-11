@@ -96,14 +96,15 @@ public class DiscordBot extends ListenerAdapter {
 		);
 
 		List<Command> present = jda.retrieveCommands().complete();
+		List<CommandData> filtered = new ArrayList<>();
 		for (CommandData command : commands) {
 			for (Command c : present) {
 				boolean replacement_needed = false;
 				if(!c.getName().equals(command.getName())) replacement_needed = true;
 				if(!c.getType().equals(command.getType())) replacement_needed = true;
 				if(!c.getDefaultPermissions().equals(command.getDefaultPermissions())) replacement_needed = true;
-				if(!replacement_needed) {
-					commands.remove(command);
+				if(replacement_needed) {
+					filtered.add(command);
 				}
 			}
 		}
