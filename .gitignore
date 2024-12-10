@@ -47,3 +47,6 @@ discord.token
 /bot/dependency-reduced-pom.xml
 /vcr.ttf
 /cache/
+/bluesky.login
+/sfd.db
+/test.csv
