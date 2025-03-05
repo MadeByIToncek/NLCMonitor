@@ -95,11 +95,13 @@ public class BlueSkyRuntime implements Closeable {
 
 
 	public void postBluesky(String message) throws IOException {
+		refreshSession();
+
 		OkHttpClient client = new OkHttpClient();
 
 		MediaType mediaType = MediaType.parse("application/json");
 		RequestBody body = RequestBody.create(new JSONObject()
-				.put("repo", "itoncek.space")
+				.put("repo", "nlc.itoncek.space")
 				.put("collection", "app.bsky.feed.post")
 				.put("record", new JSONObject().put("text", message).put("createdAt", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + "Z"))
 				.toString(4), mediaType);
@@ -110,12 +112,12 @@ public class BlueSkyRuntime implements Closeable {
 				.addHeader("Authorization", "Bearer " + accessJWT)
 				.build();
 
-		Response response = client.newCall(request).execute();
-		if (response.isSuccessful()) return;
+		try(Response response = client.newCall(request).execute()) {
+			if (response.isSuccessful()) return;
 
-		response.close();
-		if (response.body() == null) throw new IOException("BSky error!");
-		throw new IOException("BSky error!" + response.body().string());
+			String string = response.body().string();
+			throw new IOException("BSky error!" + string);
+		}
 	}
 
 	@Override

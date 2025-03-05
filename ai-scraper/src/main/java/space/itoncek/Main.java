@@ -1,4 +1,4 @@
-package space.itoncek.nlcmonitor;
+package space.itoncek;
 
 import javax.imageio.ImageIO;
 import java.awt.Color;
@@ -9,9 +9,12 @@ import java.net.URI;
 
 public class Main {
 	public static void main(String[] args) throws IOException {
-		File f = new File("./images/" + System.currentTimeMillis() + ".png");
+		File f = new File("./images-oswin/" + System.currentTimeMillis() + ".png");
+		File f2 = new File("./images-maarsy/" + System.currentTimeMillis() + ".png");
 		f.getParentFile().mkdirs();
 		f.createNewFile();
+		f2.getParentFile().mkdirs();
+		f2.createNewFile();
 
 		BufferedImage bi = ImageIO.read(URI.create("https://www.iap-kborn.de/fileadmin/user_upload/MAIN-abteilung/radar/Radars/OswinVHF/Plots/OSWIN_Mesosphere_4hour.png").toURL());
 
@@ -41,6 +44,16 @@ public class Main {
 		}
 
 		ImageIO.write(out, "png", f);
+
+		BufferedImage bi2 = ImageIO.read(URI.create("https://www.iap-kborn.de/fileadmin/user_upload/MAIN-abteilung/radar/Radars/MAARSY/Plots/maarsy_dbs_meso_eta.png").toURL());
+		BufferedImage out2 = new BufferedImage(268, 877, BufferedImage.TYPE_4BYTE_ABGR);
+
+		for (int x = 1469; x < 1737; x++) {
+			for (int y = 82; y < 959; y++) {
+				out2.setRGB(x-1469,y-82,bi2.getRGB(x,y));
+			}
+		}
+		ImageIO.write(out2, "png", f2);
 	}
 
 	private static int sampleColorAtX(BufferedImage c, int idx) {

@@ -13,7 +13,6 @@ import net.dv8tion.jda.api.utils.FileUpload;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.jetbrains.annotations.Nullable;
 import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.api.ops.impl.transforms.pairwise.arithmetic.CopyOp;
 import org.nd4j.linalg.factory.Nd4j;
 import space.itoncek.nlcmonitor.DiscordHook;
 
@@ -37,7 +36,6 @@ import java.nio.file.StandardCopyOption;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Map;
 
 public class NlcHook extends ListenerAdapter implements DiscordHook {
 	ArrayList<File> delete = new ArrayList<>();

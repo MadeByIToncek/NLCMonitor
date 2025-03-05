@@ -149,12 +149,18 @@ public class SolarFlareHook extends ListenerAdapter implements DiscordHook {
 							sd.put(ZonedDateTime.parse(o.getString("time_tag")), o.getDouble("flux"));
 						}
 					}
+
+					System.out.println("pd.size() = " + pd.size());
+					System.out.println("sd.size() = " + sd.size());
+
 					ArrayList<Double> values = new ArrayList<>();
 					pd.forEach((date, val)-> {
-						double pri = val;
-						double sec = sd.get(date);
+						Double sec = sd.get(date);
 
-						values.add(Math.max(pri,sec));
+						if(sec == null) values.add(val);
+						else if (val == null) values.add(sec);
+						else if(val == 0 && sec == 0) values.add(0d);
+						else values.add(Math.max(val,sec));
 					});
 
 					q.editOriginal("Generating plot").queue();

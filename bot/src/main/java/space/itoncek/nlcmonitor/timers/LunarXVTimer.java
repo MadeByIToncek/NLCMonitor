@@ -3,12 +3,9 @@ package space.itoncek.nlcmonitor.timers;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.MessageEmbed;
-import net.dv8tion.jda.api.entities.channel.Channel;
-import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
-import net.dv8tion.jda.api.interactions.commands.OptionType;
+import net.dv8tion.jda.api.entities.channel.unions.MessageChannelUnion;
 import net.dv8tion.jda.api.interactions.commands.build.CommandData;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
-import net.dv8tion.jda.api.interactions.commands.build.OptionData;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.entity.mime.MultipartEntityBuilder;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
@@ -51,7 +48,7 @@ public class LunarXVTimer implements DiscordTimedExecutor {
 	}
 
 	@Override
-	public void execute(JDA jda, BlueSkyRuntime bsky, TextChannel c) throws IOException {
+	public void execute(JDA jda, BlueSkyRuntime bsky, MessageChannelUnion c) throws IOException {
 		//LocalDateTime execDateTime = LocalDateTime.of(2024,11,8,12,0,0);
 		LocalDateTime execDateTime = LocalDateTime.now();
 		Line fitline = bestFitLine(parse(filter(getHorizons(execDateTime))));
@@ -82,10 +79,10 @@ public class LunarXVTimer implements DiscordTimedExecutor {
 		this.enabled = enabled;
 	}
 
-	private static void sendAlert(JDA jda, BlueSkyRuntime bsky, TextChannel c, LocalDateTime execDateTime, ZonedDateTime rising) {
+	private static void sendAlert(JDA jda, BlueSkyRuntime bsky, MessageChannelUnion c, LocalDateTime execDateTime, ZonedDateTime rising) {
 		long snowflake = 1120470471993983056L;
 		if(c == null) {
-			c = jda.getChannelById(TextChannel.class, snowflake);
+			c = jda.getChannelById(MessageChannelUnion.class, snowflake);
 		}
 		if(c == null) {
 			log.error("Unable to find channel {}",snowflake);

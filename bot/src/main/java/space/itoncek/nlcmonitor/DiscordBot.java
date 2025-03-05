@@ -16,6 +16,7 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.LoggerFactory;
 import space.itoncek.nlcmonitor.modules.EventImpactHook;
 //import space.itoncek.nlcmonitor.modules.NlcHook;
+import space.itoncek.nlcmonitor.modules.NlcHook;
 import space.itoncek.nlcmonitor.modules.SolarFlareHook;
 import space.itoncek.nlcmonitor.timers.LunarXVTimer;
 
@@ -62,7 +63,7 @@ public class DiscordBot extends ListenerAdapter {
 
 		//Hooks
 		HookManager hm = new HookManager(jda);
-		//hm.register(new NlcHook());
+		hm.register(new NlcHook());
 		hm.register(new SolarFlareHook());
 		hm.register(new EventImpactHook());
 

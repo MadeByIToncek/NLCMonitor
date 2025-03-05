@@ -1,17 +1,8 @@
 package space.itoncek.nlcmonitor;
 
-import static java.lang.Thread.sleep;
-import net.dv8tion.jda.api.EmbedBuilder;
-import net.dv8tion.jda.api.JDA;
-import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
-import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.dv8tion.jda.api.interactions.commands.build.CommandData;
-import org.jetbrains.annotations.NotNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.awt.Color;
 import java.io.IOException;
+import static java.lang.Thread.sleep;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -22,6 +13,15 @@ import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+
+import net.dv8tion.jda.api.EmbedBuilder;
+import net.dv8tion.jda.api.JDA;
+import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
+import net.dv8tion.jda.api.hooks.ListenerAdapter;
+import net.dv8tion.jda.api.interactions.commands.build.CommandData;
+import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class TimerManager implements DiscordManager<DiscordTimedExecutor>{
 	private static final Logger log = LoggerFactory.getLogger(TimerManager.class);
@@ -91,7 +91,7 @@ public class TimerManager implements DiscordManager<DiscordTimedExecutor>{
 									}
 								});
 								try {
-									exec.execute(jda,null, event.getChannel().asTextChannel());
+									exec.execute(jda,null, event.getChannel());
 								} catch (IOException e) {
 									log.error("exec error", e);
 								}
@@ -100,7 +100,6 @@ public class TimerManager implements DiscordManager<DiscordTimedExecutor>{
 						super.onSlashCommandInteraction(event);
 					}
 				});
-
 				exec.setEnabled(true);
 			} else {
 				exec.setEnabled(false);
