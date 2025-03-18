@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.13.35825.156 d17.13
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DiscordBot", ".\DiscordBot\DiscordBot.csproj", "{A74F34D6-7994-4035-9346-11588DFB08BE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MLScraper", ".\MLScraper\MLScraper.csproj", "{FEBB4DF3-3958-4B0C-B55D-B908059B9CCC}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A74F34D6-7994-4035-9346-11588DFB08BE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A74F34D6-7994-4035-9346-11588DFB08BE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A74F34D6-7994-4035-9346-11588DFB08BE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A74F34D6-7994-4035-9346-11588DFB08BE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FEBB4DF3-3958-4B0C-B55D-B908059B9CCC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FEBB4DF3-3958-4B0C-B55D-B908059B9CCC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FEBB4DF3-3958-4B0C-B55D-B908059B9CCC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FEBB4DF3-3958-4B0C-B55D-B908059B9CCC}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {8F9DB9AE-C886-44AE-ADB6-4E0C0560F9A6}
+	EndGlobalSection
+EndGlobal
