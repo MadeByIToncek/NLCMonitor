@@ -9,17 +9,8 @@
   <ItemGroup>
     <PackageReference Include="Discord.Net" Version="3.17.2" />
     <PackageReference Include="FluentScheduler" Version="5.5.1" />
-    <PackageReference Include="Microsoft.ML" Version="3.0.1" />
-    <PackageReference Include="Microsoft.ML.Vision" Version="3.0.1" />
-    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1-Preview.1" />
-    <PackageReference Include="SciSharp.TensorFlow.Redist" Version="2.3.1" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.7" />
     <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.1.5" />
     <PackageReference Include="System.Threading" Version="4.3.0" />
-  </ItemGroup>
-  <ItemGroup Label="v1_maarsy">
-    <None Include="v1_maarsy.mlnet">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
 </Project>

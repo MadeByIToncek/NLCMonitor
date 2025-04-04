@@ -14,25 +14,12 @@ public class SunriseSunsetTimer : ITimer {
 
     public void SetupTimer(Registry registry) {
         registry.Schedule(() => new Func<Task>(async () => { await Execute(); }).Invoke()).ToRunEvery(1).Days().At(16, 00);
-        //registry.Schedule(() => Execute()).ToRunNow();
+        //NODO)) Reset before publish!
+        //registry.Schedule(() => Execute().Wait()).ToRunNow();
     }
 
-    private async Task Execute() {
-        DateTime today = DateTime.UtcNow.Date;
-        DateTime tomorrow = DateTime.UtcNow.Date.AddDays(1);
-        Sunriset.SunriseSunset(today.Year, today.Month, today.Day, 50, 15, out double _, out double set);
-        Sunriset.SunriseSunset(tomorrow.Year, tomorrow.Month, tomorrow.Day, 50, 15, out double rise, out double _);
-
-        DateTime sunset = today.AddHours(set).ToLocalTime();
-        DateTime sunrise = tomorrow.AddHours(rise).ToLocalTime();
-
-        Sunriset.AstronomicalTwilight(today.Year, today.Month, today.Day, 50, 15, out double _, out double astroset);
-        Sunriset.AstronomicalTwilight(tomorrow.Year, tomorrow.Month, tomorrow.Day, 50, 15, out double astroise,
-            out double _);
-
-        DateTime astrosunset = today.AddHours(astroset).ToLocalTime();
-        DateTime astrosunrise = tomorrow.AddHours(astroise).ToLocalTime();
-
+    public async Task Execute() {
+        
         await using Stream s = File.OpenRead("./sunrise.config");
         List<ulong>? channels = await JsonSerializer.DeserializeAsync<List<ulong>>(s);
 
@@ -47,129 +34,98 @@ public class SunriseSunsetTimer : ITimer {
             .Select(x => (IChannel)x /* cannot actually be null, ignore! Compiler overreacting! */)
             .ToList();
 
-        DateTime moonset = DateTime.Now, moonrise = DateTime.Now;
-        foreach ((DateTime time, bool rising) in await LunarRiseSetApproximator.Execute(DateTime.Today.AddHours(12))) {
-            if (rising) {
-                moonrise = time;
-            }
-            else {
-                moonset = time;
-            }
-        }
 
-        String anAlert = "";
-
-        if (IsBetween(moonrise, astrosunset, astrosunrise) && IsBetween(moonset, astrosunset, astrosunrise)) {
-            if (moonrise > moonset) {
-                //checked?
-                anAlert = $"""
-                           Začátek: <t:{ToEpoch(moonset)}:t> [<t:{ToEpoch(moonset)}:R>] (způsobeno měsícem)
-                           Konec: <t:{ToEpoch(moonrise)}:t> [<t:{ToEpoch(moonrise)}:R>] (způsobeno měsícem)
-
-                           """;
-            }
-            else {
-                //checked?
-                anAlert = $"""
-                           Začátek 1: <t:{ToEpoch(astrosunset)}:t> [<t:{ToEpoch(astrosunset)}:R>]
-                           Konec 1: <t:{ToEpoch(moonrise)}:t> [<t:{ToEpoch(moonrise)}:R>] (způsobeno měsícem)
-
-                           Začátek 2: <t:{ToEpoch(moonset)}:t> [<t:{ToEpoch(moonset)}:R>] (způsobeno měsícem)
-                           Konec 2: <t:{ToEpoch(astrosunrise)}:t> [<t:{ToEpoch(astrosunrise)}:R>]
-
-                           """;
+        
+        Embed e = await GenerateSunriseSunsetEmbed();
+        
+        foreach (IChannel channel in c) {
+            if (channel is IMessageChannel mch) {
+                await mch.SendMessageAsync(embed: e);
             }
         }
-        else if (IsBetween(moonrise, astrosunset, astrosunrise)) {
-            if (moonset > astrosunrise || moonset < astrosunset) {
-                //checked?
-                anAlert = $"""
-                           Začátek: <t:{ToEpoch(astrosunset)}:t> [<t:{ToEpoch(astrosunset)}:R>]
-                           Konec: <t:{ToEpoch(moonrise)}:t> [<t:{ToEpoch(moonrise)}:R>] (způsobeno měsícem)
+    }
 
-                           """;
-            }
-            else {
-                anAlert = $"""
-                           Začátek: <t:{ToEpoch(astrosunset)}:t> [<t:{ToEpoch(astrosunset)}:R>]
-                           Konec: <t:{ToEpoch(astrosunrise)}:t> [<t:{ToEpoch(astrosunrise)}:R>]
-
-                           ||na tuto variantu <@580098459802271744> nemyslel, ar:{ToEpoch(astrosunrise)} as:{ToEpoch(astrosunset)} mr:{ToEpoch(moonrise)} ms:{ToEpoch(moonset)}br: between moonrise||
-                           """;
-            }
+    public static async Task<Embed> GenerateSunriseSunsetEmbed(double lat = 50.5973189d, double lon = 15.1501458d) {
+        DateTime today = DateTime.UtcNow.Date.AddHours(12);
+        DateTime tomorrow = today.AddDays(1);
+        
+        try {
         }
-        else if (IsBetween(moonset, astrosunset, astrosunrise)) {
-            if (moonrise > astrosunrise || moonrise < astrosunset) {
-                anAlert = $"""
-                           Začátek: <t:{ToEpoch(moonset)}:t> [<t:{ToEpoch(moonset)}:R>] (způsobeno měsícem)
-                           Konec: <t:{ToEpoch(astrosunrise)}:t> [<t:{ToEpoch(astrosunrise)}:R>]
-
-                           """;
-            }
-            else {
-                anAlert = $"""
-                           Začátek: <t:{ToEpoch(astrosunset)}:t> [<t:{ToEpoch(astrosunset)}:R>]
-                           Konec: <t:{ToEpoch(astrosunrise)}:t> [<t:{ToEpoch(astrosunrise)}:R>]
-
-                           ||na tuto variantu <@580098459802271744> nemyslel, ar:{ToEpoch(astrosunrise)} as:{ToEpoch(astrosunset)} mr:{ToEpoch(moonrise)} ms:{ToEpoch(moonset)} br: between moonset||
-                           """;
-            }
-        }
-        else if (moonrise < astrosunset && astrosunrise < moonset ) {
-            anAlert = "Astronomická noc dnes z důvodu měsíce nenastane!";
-        } else if (moonset < astrosunset && astrosunrise < moonrise) {
-            anAlert = $"""
-                       Začátek: <t:{ToEpoch(astrosunset)}:t> [<t:{ToEpoch(astrosunset)}:R>]
-                       Konec: <t:{ToEpoch(astrosunrise)}:t> [<t:{ToEpoch(astrosunrise)}:R>]
-
-                       """;
-        }
-        else {
-            anAlert = $"""
-                       Začátek: <t:{ToEpoch(astrosunset)}:t> [<t:{ToEpoch(astrosunset)}:R>]
-                       Konec: <t:{ToEpoch(astrosunrise)}:t> [<t:{ToEpoch(astrosunrise)}:R>]
-
-                       ||na tuto variantu <@580098459802271744> nemyslel, ar:{ToEpoch(astrosunrise)} as:{ToEpoch(astrosunset)} mr:{ToEpoch(moonrise)} ms:{ToEpoch(moonset)} br: fallback||
-                       """;
+        catch (Exception exception) {
+            Console.WriteLine(exception);
+            throw;
         }
 
+        (DateTime sunrise, DateTime sunset, DateTime astrostart, DateTime astroEnd, DateTime moonrise, DateTime moonset)? data = await LunarRiseSetApproximator.GetHorizonsData(today,tomorrow, lat, lon);
+
+        String loc = "Liberecko";
+        if (Math.Abs(lat - 50.5973189d) > .0001 || Math.Abs(lon - 15.1501458d) > .0001) {
+            loc = $"{lat}N, {lon}E";
+        }
+        
+        if (data == null) return new EmbedBuilder()
+            .WithColor(Discord.Color.Red)
+            .WithAuthor(new EmbedAuthorBuilder()
+                .WithName(Program.DiscordClient.CurrentUser.Username)
+                .WithUrl("https://itoncek.space/")
+                .WithIconUrl(Program.DiscordClient.CurrentUser.GetAvatarUrl(ImageFormat.Png, 256)))
+            .WithTitle($"Časové tabulky pro den <t:{ToEpoch(DateTime.Now)}:D>")
+            .WithDescription($"Lokalita: {loc}")
+            .AddField(builder => {
+                builder.WithName("Error")
+                    .WithValue("There has been an error while computing times!");
+            })
+            .WithTimestamp(DateTimeOffset.Now)
+            .Build();
+
+        (DateTime sunrise, DateTime sunset, DateTime astrostart, DateTime astroEnd, DateTime moonrise, DateTime moonset) = data.Value;
+
+        bool moonsetApproximate = false;
+        bool moonriseApproximate = false;
         Embed e = new EmbedBuilder()
             .WithAuthor(new EmbedAuthorBuilder()
                 .WithName(Program.DiscordClient.CurrentUser.Username)
                 .WithUrl("https://itoncek.space/")
                 .WithIconUrl(Program.DiscordClient.CurrentUser.GetAvatarUrl(ImageFormat.Png, 256)))
             .WithTitle($"Časové tabulky pro den <t:{ToEpoch(DateTime.Now)}:D>")
-            .WithDescription("Lokalita: Liberec")
+            .WithDescription($"Lokalita: {loc}")
+            .WithTimestamp(DateTimeOffset.Now)
             .AddField(new EmbedFieldBuilder()
-                .WithName("Východ a západ slunce")
+                .WithName("Východ a západ Slunce")
                 .WithValue($"""
                             Západ Slunce: <t:{ToEpoch(sunset)}:t> [<t:{ToEpoch(sunset)}:R>]
                             Východ Slunce: <t:{ToEpoch(sunrise)}:t> [<t:{ToEpoch(sunrise)}:R>]
 
                             """))
-            .AddField(new EmbedFieldBuilder()
-                .WithName("Východ a západ měsíce")
-                .WithValue((moonset - moonrise).TotalSeconds < 0
-                    ? $"""
-                       Západ Měsíce: <t:{ToEpoch(moonset)}:t> [<t:{ToEpoch(moonset)}:R>]
-                       Východ Měsíce: <t:{ToEpoch(moonrise)}:t> [<t:{ToEpoch(moonrise)}:R>]
+             .AddField(new EmbedFieldBuilder()
+                 .WithName("Východ a západ Měsíce")
+                 .WithValue((moonset - moonrise).TotalSeconds < 0
+                     ? $"""
+                        Západ Měsíce: <t:{ToEpoch(moonset)}:t> [<t:{ToEpoch(moonset)}:R>] {(moonsetApproximate ? "Mimo okno dat, aproximováno!":"")}
+                        Východ Měsíce: <t:{ToEpoch(moonrise)}:t> [<t:{ToEpoch(moonrise)}:R>] {(moonriseApproximate ? "Mimo okno dat, aproximováno!":"")}
 
-                       """
-                    : $"""
-                       Východ Měsíce: <t:{ToEpoch(moonrise)}:t> [<t:{ToEpoch(moonrise)}:R>]
-                       Západ Měsíce: <t:{ToEpoch(moonset)}:t> [<t:{ToEpoch(moonset)}:R>]
+                        """
+                     : $"""
+                         Východ Měsíce: <t:{ToEpoch(moonrise)}:t> [<t:{ToEpoch(moonrise)}:R>] {(moonriseApproximate ? "Mimo okno dat, aproximováno!":"")}
+                         Západ Měsíce: <t:{ToEpoch(moonset)}:t> [<t:{ToEpoch(moonset)}:R>] {(moonsetApproximate ? "Mimo okno dat, aproximováno!":"")}
 
-                       """))
-            .AddField(new EmbedFieldBuilder()
-                .WithName("Astronomická noc")
-                .WithValue(anAlert))
+                         """))
+             .AddField(new EmbedFieldBuilder()
+                 .WithName("Astronomická noc (aktuálně nezahrnuje pozici měsíce)")
+                 .WithValue($"""
+                             Začátek: <t:{ToEpoch(astrostart)}:t> [<t:{ToEpoch(astrostart)}:R>]
+                             Konec: <t:{ToEpoch(astroEnd)}:t> [<t:{ToEpoch(astroEnd)}:R>]
+
+                             """))
+            // .AddField(new EmbedFieldBuilder()
+            //     .WithName("Astronomická noc")
+            //     .WithValue(anAlert))
+            .WithFooter(b => {
+                b.WithText("Generated from JPL's Horizons data.");
+            })
             .WithColor(Discord.Color.Blue)
             .Build();
-        foreach (IChannel channel in c) {
-            if (channel is IMessageChannel mch) {
-                await mch.SendMessageAsync(embed: e);
-            }
-        }
+        return e;
     }
 
     private static bool IsBetween(DateTime a, DateTime x, DateTime y) {

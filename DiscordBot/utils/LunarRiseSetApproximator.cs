@@ -1,28 +1,30 @@
-﻿using System.Globalization;
+﻿using System.Collections;
+using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 using Discord.Commands;
 
 namespace DiscordBot.utils;
 
 public class LunarRiseSetApproximator {
-    public static async Task<string> DownloadData(DateTime time) {
-        const string requestTemplate = "!$$SOF\n" +
+    private static async Task<string> DownloadData(DateTime start,DateTime end, double lat, double lon) {
+        string requestString = "!$$SOF\n" +
                                "MAKE_EPHEM=YES\n" +
                                "COMMAND=301\n" +
                                "EPHEM_TYPE=OBSERVER\n" +
                                "CENTER='coord@399'\n" +
                                "COORD_TYPE=GEODETIC\n" +
-                               "SITE_COORD='+14.43330,+50.08330,250'\n" +
-                               "START_TIME='{0}'\n" +
-                               "STOP_TIME='{1}'\n" +
-                               "STEP_SIZE='5 MINUTES'\n" +
+                               $"SITE_COORD='{(lon > 0 ? "+" : "")}{lon},{(lat > 0 ? "+" : "")}{lat},0.0'\n" +
+                               $"START_TIME='{start:yyyy-MMM-dd HH:mm:ss}'\n" +
+                               $"STOP_TIME='{end:yyyy-MMM-dd HH:mm:ss}'\n" +
+                               "STEP_SIZE='1 MINUTES'\n" +
                                "QUANTITIES='4'\n" +
                                "REF_SYSTEM='ICRF'\n" +
                                "CAL_FORMAT='CAL'\n" +
                                "CAL_TYPE='M'\n" +
-                               "TIME_DIGITS='SECONDS'\n" +
-                               "ANG_FORMAT='HMS'\n" +
-                               "APPARENT='AIRLESS'\n" +
+                               "TIME_DIGITS='MINUTES'\n" +
+                               "ANG_FORMAT='DEG'\n" +
+                               "APPARENT='REFRACTED'\n" +
                                "RANGE_UNITS='AU'\n" +
                                "SUPPRESS_RANGE_RATE='NO'\n" +
                                "SKIP_DAYLT='NO'\n" +
@@ -30,16 +32,16 @@ public class LunarRiseSetApproximator {
                                "EXTRA_PREC='NO'\n" +
                                "R_T_S_ONLY='NO'\n" +
                                "CSV_FORMAT='YES'\n" +
-                               "OBJ_DATA='NO'\n";
-
-        string requestString = String.Format(requestTemplate, time.ToString("yyyy-MMM-dd HH:mm:ss"), time.AddDays(1).ToString("yyyy-MMM-dd HH:mm:ss"));
+                               "OBJ_DATA='YES'\n";
 
         using MultipartFormDataContent content = new();
         content.Add(new StringContent(requestString),"input");
         content.Add(new StringContent("text"),"format");
         using HttpClient client = new();
         using HttpResponseMessage res = await client.PostAsync("https://ssd.jpl.nasa.gov/api/horizons_file.api", content);
-        return await res.Content.ReadAsStringAsync();
+        string resb = await res.Content.ReadAsStringAsync();
+        //Console.WriteLine(resb);
+        return resb;
     }
 
     private static List<string> Filter(string horizonsData) {
@@ -79,34 +81,17 @@ public class LunarRiseSetApproximator {
     
     private static (double ax, double bx, long startLimit, long endLimit)[] ClosestPointsToZeroToLines(List<(DateTime date, double elev)> data) {
         List<(double ax, double bx, long startLimit, long endLimit)> output = [];
-        for (var i = 0; i < data.Count-1; i++) {
-            var p1 = data[i];
-            var p2 = data[i+1];
+        for (int i = 0; i < data.Count-1; i++) {
+            (DateTime date, double elev) p1 = data[i];
+            (DateTime date, double elev) p2 = data[i+1];
 
             double ax = (p1.elev - p2.elev) / (ToEpochSecond(p1.date) - ToEpochSecond(p2.date));
             double bx = p1.elev - ax*ToEpochSecond(p1.date);
             
             output.Add((ax,bx, ToEpochSecond(p1.date), ToEpochSecond(p2.date)));
         }
-
+        
         return output.ToArray();
-    }
-
-    public static async Task<List<(DateTime time, bool rising)>> Execute(DateTime time) {
-        // NODO)) REMOVE FOR PRODUCTION!
-        //time = new DateTime(2025,03,6).AddHours(12);
-
-        (double ax, double bx, long startLimit, long endLimit)[] tuple = ClosestPointsToZeroToLines(Parse(Filter(await DownloadData(time))));
-
-        List<(DateTime time, bool rising)> results = [];
-        foreach ((double ax, double bx, long startLimit, long endLimit) in tuple) {
-            double r = -bx / ax;
-            if (r >= startLimit && r <= endLimit) {
-                results.Add((ToDateTime(r),ax > 0));
-            }
-        }
-
-        return results;
     }
 
     private static DateTime ToDateTime(double epochSecond) {
@@ -118,5 +103,109 @@ public class LunarRiseSetApproximator {
         TimeSpan t = dateTime.ToUniversalTime() - DateTime.UnixEpoch;
         return (long)t.TotalSeconds;
     }
-    
+
+    public static async
+        Task<(DateTime sunrise, DateTime sunset, DateTime astrostart, DateTime astroEnd, DateTime moonrise, DateTime
+            moonset)?> GetHorizonsData(DateTime start, DateTime end, double lat, double lon) {
+        string data = await DownloadData(start, end, lat, lon);
+        List<(DateTime time, SolarFlag sf, LunarFlag lf)> list = Parsse(Filter(data));
+
+        DateTime? moonrise = null, moonset = null, sunrise = null, sunset = null, astrostart = null, astroend = null;
+        bool moonHasRisen = false;
+        bool moonHasSet = false;
+        bool sunHasRisen = false;
+        bool sunHasSet = false;
+        bool astroStarted = false;
+
+        foreach ((DateTime time, SolarFlag sf, LunarFlag lf) in list) {
+            switch (lf) {
+                case LunarFlag.Rising when !moonHasRisen:
+                    moonHasRisen = true;
+                    moonrise = time;
+                    break;
+                case LunarFlag.Setting when !moonHasSet:
+                    moonHasSet = true;
+                    moonset = time;
+                    break;
+            }
+
+            switch (sf) {
+                case SolarFlag.Civil when !sunHasSet:
+                    sunHasSet = true;
+                    sunset = time;
+                    break;
+                case SolarFlag.Daylight when sunHasSet && !sunHasRisen:
+                    sunHasRisen = true;
+                    sunrise = time;
+                    break;
+                case SolarFlag.Astronomical when !astroStarted:
+                    astroStarted = true;
+                    astrostart = time;
+                    break;
+                case SolarFlag.Astronomical:
+                    astroend = time;
+                    break;
+            }
+
+            //Console.WriteLine($"{time} - {sf}|{lf}");
+        }
+
+        if (sunrise != null && sunset != null && astrostart != null && astroend != null && moonrise != null &&
+            moonset != null)
+            return ((DateTime sunrise, DateTime sunset, DateTime astrostart, DateTime astroEnd, DateTime moonrise,
+                DateTime moonset))(sunrise, sunset, astrostart, astroend, moonrise, moonset);
+        return null;
+    }
+
+    private static List<(DateTime time, SolarFlag sf, LunarFlag lf)> Parsse(List<string> data) {
+        List<(DateTime time, SolarFlag sf, LunarFlag lf)> o = [];
+        
+        foreach (string s in data) {
+            string[] elements = s.Split(",").Select(x => x.Trim()).ToArray();
+            if (elements.Length != 6) {
+                Console.WriteLine("Following line is invalid ({0} parts instead of 6):{1}", elements.Length, s);
+                continue;
+            } 
+            o.Add((DateTime.Parse(elements[0]+"Z"), DetermineSolar(elements[1]), DetermineLunar(elements[2])));
+        }
+        
+        return o;
+    }
+
+    public static SolarFlag DetermineSolar(string s) {
+        return s switch {
+            "*" => SolarFlag.Daylight,
+            "C" => SolarFlag.Civil,
+            "N" => SolarFlag.Nautical,
+            "A" => SolarFlag.Astronomical,
+            _ => SolarFlag.Night
+        };
+    }
+    public static LunarFlag DetermineLunar(string s) {
+        return s switch {
+            "m" => LunarFlag.Visible,
+            "r" => LunarFlag.Rising,
+            "e" => LunarFlag.MaxElev,
+            "t" => LunarFlag.Transit,
+            "s" => LunarFlag.Setting,
+            _ => LunarFlag.Invisible
+        };
+    }
+}
+
+public enum SolarFlag {
+    Daylight,
+    Civil,
+    Nautical,
+    Astronomical,
+    Night
+}
+
+public enum LunarFlag {
+    Visible,
+    Invisible,
+    Rising,
+    MaxElev,
+    Transit,
+    Setting
 }
