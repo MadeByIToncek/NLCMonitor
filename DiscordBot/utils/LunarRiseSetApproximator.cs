@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿#define SUPRESS_DEBUG
+using System.Collections;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
@@ -6,8 +7,8 @@ using Discord.Commands;
 
 namespace DiscordBot.utils;
 
-public class LunarRiseSetApproximator {
-    private static async Task<string> DownloadData(DateTime start,DateTime end, double lat, double lon) {
+public static class LunarRiseSetApproximator {
+    private static async Task<string> DownloadData(DateTime start, DateTime end, double lat, double lon) {
         string requestString = "!$$SOF\n" +
                                "MAKE_EPHEM=YES\n" +
                                "COMMAND=301\n" +
@@ -35,12 +36,16 @@ public class LunarRiseSetApproximator {
                                "OBJ_DATA='YES'\n";
 
         using MultipartFormDataContent content = new();
-        content.Add(new StringContent(requestString),"input");
-        content.Add(new StringContent("text"),"format");
+        content.Add(new StringContent(requestString), "input");
+        content.Add(new StringContent("text"), "format");
         using HttpClient client = new();
         using HttpResponseMessage res = await client.PostAsync("https://ssd.jpl.nasa.gov/api/horizons_file.api", content);
         string resb = await res.Content.ReadAsStringAsync();
-        //Console.WriteLine(resb);
+        
+        #if DEBUG && !SUPRESS_DEBUG
+        Console.WriteLine(resb);
+        #endif
+        
         return resb;
     }
 
@@ -105,17 +110,27 @@ public class LunarRiseSetApproximator {
     }
 
     public static async
-        Task<(DateTime sunrise, DateTime sunset, DateTime astrostart, DateTime astroEnd, DateTime moonrise, DateTime
-            moonset)?> GetHorizonsData(DateTime start, DateTime end, double lat, double lon) {
+        Task<HorizonsResponse> GetHorizonsData(DateTime start, DateTime end, double lat, double lon) {
         string data = await DownloadData(start, end, lat, lon);
         List<(DateTime time, SolarFlag sf, LunarFlag lf)> list = Parsse(Filter(data));
 
-        DateTime? moonrise = null, moonset = null, sunrise = null, sunset = null, astrostart = null, astroend = null;
+        DateTime moonrise = start,
+            moonset = start,
+            sunrise = start,
+            sunset = start,
+            astrostart = start,
+            astroend = start,
+            nautstart = start,
+            nautend = start,
+            maxElevTime = start;
         bool moonHasRisen = false;
         bool moonHasSet = false;
         bool sunHasRisen = false;
         bool sunHasSet = false;
         bool astroStarted = false;
+        bool astroEnded = false;
+        bool nautstarted = false;
+        bool nautended = false;
 
         foreach ((DateTime time, SolarFlag sf, LunarFlag lf) in list) {
             switch (lf) {
@@ -126,6 +141,9 @@ public class LunarRiseSetApproximator {
                 case LunarFlag.Setting when !moonHasSet:
                     moonHasSet = true;
                     moonset = time;
+                    break;
+                case LunarFlag.MaxElev:
+                    maxElevTime = time;
                     break;
             }
 
@@ -138,23 +156,40 @@ public class LunarRiseSetApproximator {
                     sunHasRisen = true;
                     sunrise = time;
                     break;
-                case SolarFlag.Astronomical when !astroStarted:
-                    astroStarted = true;
-                    astrostart = time;
+                case SolarFlag.Astronomical when astroStarted:
+                    if (!astroEnded && astroStarted) {
+                        astroend = time;
+                        astroEnded = true;
+                    }
+
                     break;
-                case SolarFlag.Astronomical:
-                    astroend = time;
+                case SolarFlag.Astronomical when !astroEnded:
+                    astrostart = time;
+                    nautstarted = true;
+                    break;
+
+                case SolarFlag.Nautical when nautstarted:
+                    if (!nautended) {
+                        nautend = time;
+                        nautended = true;
+                    }
+
+                    break;
+                case SolarFlag.Nautical when !nautended:
+                    nautstart = time;
+                    break;
+
+                case SolarFlag.Night:
+                    astroStarted = true;
                     break;
             }
-
-            //Console.WriteLine($"{time} - {sf}|{lf}");
+            #if DEBUG && !SUPRESS_DEBUG
+            Console.WriteLine($"{time} - {sf}|{lf}");
+            #endif
         }
 
-        if (sunrise != null && sunset != null && astrostart != null && astroend != null && moonrise != null &&
-            moonset != null)
-            return ((DateTime sunrise, DateTime sunset, DateTime astrostart, DateTime astroEnd, DateTime moonrise,
-                DateTime moonset))(sunrise, sunset, astrostart, astroend, moonrise, moonset);
-        return null;
+        return new HorizonsResponse(sunrise, sunset, astrostart, astroend, nautstart, nautend, moonrise, moonset,
+            maxElevTime);
     }
 
     private static List<(DateTime time, SolarFlag sf, LunarFlag lf)> Parsse(List<string> data) {
@@ -191,6 +226,18 @@ public class LunarRiseSetApproximator {
             _ => LunarFlag.Invisible
         };
     }
+}
+
+public record struct HorizonsResponse(
+    DateTime Sunrise,
+    DateTime Sunset,
+    DateTime Astrostart,
+    DateTime AstroEnd,
+    DateTime NauticalStart,
+    DateTime NauticalEnd,
+    DateTime Moonrise,
+    DateTime Moonset,
+    DateTime MaxElevTime) {
 }
 
 public enum SolarFlag {

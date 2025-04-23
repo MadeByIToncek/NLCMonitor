@@ -56,6 +56,7 @@ namespace DiscordBot.module
 		public async Task Execute(SocketSlashCommand command)
 		{
 			await command.DeferAsync();
+			using GraphUtils u = await GraphUtils.Init();
 			using var tempFile = new TemporaryFile();
 
 			const string primary = "https://services.swpc.noaa.gov/json/goes/primary/xrays-";
@@ -113,7 +114,7 @@ namespace DiscordBot.module
 			await DrawClassLine(-4, "X", img, GraphUtils.borderGap, height);
 			await DrawClassLine(-3, "X10", img, GraphUtils.borderGap, height);
 
-			GraphUtils.DrawGraphAxis(img);
+			u.DrawGraphAxis(img);
 
 			await command.ModifyOriginalResponseAsync(x => x.Content = "Plotting data");
 

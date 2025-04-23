@@ -20,12 +20,17 @@
 
 		private void Create(string path) {
 			FilePath = path;
-			using (File.Create(FilePath)) { }
+			using (File.Create(FilePath,0,FileOptions.DeleteOnClose)) { }
 		}
 
 		private void Delete() {
 			if (FilePath == null) return;
-			File.Delete(FilePath);
+			try {
+				File.Delete(FilePath);
+			} catch (Exception e) {
+				// ignored
+			}
+
 			FilePath = null;
 		}
 	}

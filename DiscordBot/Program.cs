@@ -19,11 +19,13 @@ namespace DiscordBot
 	    private static readonly List<IModule> Modules = [
 			new SolarFlareModule(),
 			new SunriseSunsetCommandModule(),
-			new AdminModule()
+			new AdminModule(),
+			#if DEBUG
+			new WeatherForecastModule(),
+			#endif
 	    ];
 
 	    public static readonly List<ITimer> Timers = [
-			//new WeatherForecastTimer(),
 			new SunriseSunsetTimer()
 	    ];
 
@@ -67,6 +69,10 @@ namespace DiscordBot
 					await g.CreateApplicationCommandAsync(module.BuildCommand());
 				}
 			}
+			
+			Modules.ForEach(async x => {
+				await x.SetupListeners(DiscordClient);
+			});
 			
 			Bluesky = new BlueSkyRuntime();
 			await Bluesky.Login();

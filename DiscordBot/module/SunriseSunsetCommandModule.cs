@@ -33,7 +33,8 @@ public class SunriseSunsetCommandModule : IModule{
             .Build();
     }
     public async Task Execute(SocketSlashCommand command) {
-        await command.DeferAsync();
+        await command.RespondAsync("Processing...", ephemeral: true);
+        await command.Channel.TriggerTypingAsync();
         double latitude = 0, longitude = 0;
         foreach (SocketSlashCommandDataOption o in command.Data.Options) {
             if (o.Name == "latitude") {
@@ -42,8 +43,7 @@ public class SunriseSunsetCommandModule : IModule{
                 longitude = (double)o.Value;
             }
         }
-        Embed e = await SunriseSunsetTimer.GenerateSunriseSunsetEmbed(latitude, longitude);
-        await command.DeleteOriginalResponseAsync();
-        await command.FollowupAsync(embed: e, ephemeral: true);
+        Embed[] e = await SunriseSunsetTimer.GenerateSunriseSunsetEmbed(latitude, longitude);
+        await command.FollowupAsync(embeds: e, ephemeral: true);
     }
 }
