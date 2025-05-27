@@ -15,7 +15,8 @@ public class BlueSkyRuntime {
     private string? _did;
 
     public BlueSkyRuntime() {
-        const string creds = "bluesky.login";
+        // TODO)) Update for next release
+        const string creds = "./data/bluesky.login";
         if (!File.Exists(creds)) {
             CreateCredsFile(creds).Wait();
         }

@@ -46,7 +46,7 @@ internal class AdminModule : IModule {
                             switch (module.Name) {
                                 case "sunrise":
                                     SunriseSunsetTimer sst = (SunriseSunsetTimer)Program.Timers.First(x => x is SunriseSunsetTimer);
-                                    await sst.Execute();
+                                    await SunriseSunsetTimer.Execute();
                                     break;
                             }
                         }
