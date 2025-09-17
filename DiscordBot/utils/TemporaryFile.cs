@@ -27,7 +27,7 @@
 			if (FilePath == null) return;
 			try {
 				File.Delete(FilePath);
-			} catch (Exception e) {
+			} catch (Exception) {
 				// ignored
 			}
 

@@ -1,7 +1,6 @@
 ﻿using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Processing;
 
-
 namespace MLScraper {
 	internal class Program {
 		static void Main(string[] args)

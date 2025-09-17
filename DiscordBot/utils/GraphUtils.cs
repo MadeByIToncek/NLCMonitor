@@ -63,7 +63,7 @@ public class GraphUtils : IDisposable{
         return scaled;
     }
 
-    public async Task DrawTemperatureGraphTicks(Image<Rgba32> img, List<(double, int, float)> ticks) {
+    public void DrawTemperatureGraphTicks(Image<Rgba32> img, List<(double, int, float)> ticks) {
         FontCollection collection = new();
         collection.Add(_fpath);
 

@@ -10,8 +10,8 @@
   <ItemGroup>
     <PackageReference Include="Discord.Net" Version="3.17.4" />
     <PackageReference Include="FluentScheduler" Version="5.5.1" />
-    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.8" />
-    <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.1.6" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" />
+    <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.1.7" />
     <PackageReference Include="System.Threading" Version="4.3.0" />
   </ItemGroup>
 

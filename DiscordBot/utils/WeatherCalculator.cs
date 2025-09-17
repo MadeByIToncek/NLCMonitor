@@ -89,7 +89,7 @@ public class WeatherCalculator : IDisposable {
             (u.Scale(ToEpoch(x.Time), ToEpoch(minDate), ToEpoch(maxDate), 0, 1), x.temp2M)).ToArray();
 
         u.DrawGraphAxis(TemperatureGraph);
-        await u.DrawTemperatureGraphTicks(TemperatureGraph, ticks);
+        u.DrawTemperatureGraphTicks(TemperatureGraph, ticks);
         u.DrawGraph(TemperatureGraph, Color.Aqua,dewpoint);
         u.DrawGraph(TemperatureGraph, Color.Green,apparent);
         u.DrawGraph(TemperatureGraph, Color.Red,real);

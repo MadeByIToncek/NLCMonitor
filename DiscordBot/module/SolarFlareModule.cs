@@ -207,7 +207,7 @@ namespace DiscordBot.module
 					if (logmax >= flareThreshold)
 					{
 						flareClass = flareClass + $"{max * Math.Pow(10, floor)}".Substring(0, "0.00".Length);
-						DrawFlareLine(vals[max], flareClass, img, GraphUtils.borderGap, xScale);
+						await DrawFlareLine(vals[max], flareClass, img, GraphUtils.borderGap, xScale);
 						vals.Clear();
 					}
 				}
